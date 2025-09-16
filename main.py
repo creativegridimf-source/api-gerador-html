@@ -124,3 +124,8 @@ async def entregar_arquivos(job_id: str = Form(...), html_nome: str = Form(...),
 def baixar_arquivo(job_id: str, filename: str):
     file_path = os.path.join(BASE_DIR, f"job_{job_id}", filename)
     return FileResponse(file_path, filename=filename)
+
+
+@app.get("/")
+def root():
+    return {"status": "API de geração de HTML está ativa!"}
