@@ -2,8 +2,9 @@ from fastapi import FastAPI, UploadFile, Form
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import shutil, os, zipfile, uuid
+from typing import Optional
 
-app = FastAPI(title="Gerador de HTML de Campanha")
+app = FastAPI(title="API Completa - Gerador de HTML de Campanha")
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,11 +40,7 @@ async def gerar_html(
     with open(image_path, "wb") as buffer:
         shutil.copyfileobj(imagem.file, buffer)
 
-    conteudo_html = f"""
-    <table><tr><td><img src="imagens/{imagem.filename}" alt="Imagem da campanha" /></td></tr>
-    <tr><td style='font-family: Inter, sans-serif;'>Conteúdo gerado com base na imagem do template {template}.</td></tr></table>
-    """
-
+    conteudo_html = f"<table><tr><td><img src='imagens/{imagem.filename}' alt='Imagem da campanha' /></td></tr><tr><td style='font-family: Inter;'>Conteúdo gerado com base na imagem do template {template}.</td></tr></table>"
     html_final = TEMPLATE_HTML.format(subject=subject, snippet=snippet, conteudo=conteudo_html)
 
     html_filename = f"{template.lower().replace(' ', '-')}-{job_id}.html"
@@ -54,15 +51,73 @@ async def gerar_html(
     zip_filename = f"{template.lower().replace(' ', '-')}-{job_id}-imagens.zip"
     zip_path = os.path.join(folder, zip_filename)
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for root, _, files in os.walk(imagens_folder):
-            for file in files:
-                full_path = os.path.join(root, file)
-                arcname = os.path.relpath(full_path, folder)
-                zipf.write(full_path, arcname)
+        zipf.write(image_path, arcname=f"imagens/{imagem.filename}")
 
     return {
         "html_url": f"/baixar/{job_id}/{html_filename}",
         "imagens_zip_url": f"/baixar/{job_id}/{zip_filename}"
+    }
+
+@app.post("/fatiar-imagem")
+async def fatiar_imagem(imagem: UploadFile = Form(...)):
+    job_id = str(uuid.uuid4())[:8]
+    folder = os.path.join(BASE_DIR, f"job_{job_id}")
+    imagens_folder = os.path.join(folder, "imagens")
+    os.makedirs(imagens_folder, exist_ok=True)
+
+    image_path = os.path.join(imagens_folder, imagem.filename)
+    with open(image_path, "wb") as buffer:
+        shutil.copyfileobj(imagem.file, buffer)
+
+    zip_filename = f"fatiado-{job_id}.zip"
+    zip_path = os.path.join(folder, zip_filename)
+    with zipfile.ZipFile(zip_path, "w") as zipf:
+        zipf.write(image_path, arcname=imagem.filename)
+
+    return {
+        "imagens_zip_url": f"/baixar/{job_id}/{zip_filename}",
+        "blocos": [
+            {
+                "arquivo": imagem.filename,
+                "alt_sugerido": "Imagem de campanha fatiada (exemplo)"
+            }
+        ]
+    }
+
+@app.post("/converter-texto-html")
+async def converter_texto_em_html(imagem: UploadFile = Form(...)):
+    return {
+        "html_gerado": "<div style='font-family: Inter; font-size:16px;'>Texto extraído da imagem com fundo sólido (simulado)</div>"
+    }
+
+@app.post("/substituir-meta-tags")
+async def substituir_subject_e_snippet(
+    html: str = Form(...),
+    subject: str = Form(...),
+    snippet: str = Form(...)
+):
+    html = html.replace("<title>", f"<title>{subject}")
+    if "<!-- SNIPPET -->" in html:
+        before, after = html.split("<!-- SNIPPET -->", 1)
+        snippet_start = after.find("<font")
+        snippet_end = after.find("</font>")
+        if snippet_start != -1 and snippet_end != -1:
+            snippet_html = after[snippet_start:snippet_end+7]
+            after = after.replace(snippet_html, f"<font face='sans-serif'>{snippet}</font>", 1)
+        html = before + "<!-- SNIPPET -->" + after
+    return {"html_atualizado": html}
+
+@app.post("/gerar-alt")
+async def gerar_alt_automatico(imagem: UploadFile = Form(...)):
+    return {
+        "alt_sugerido": f"Texto descritivo automático para {imagem.filename}"
+    }
+
+@app.post("/entregar-arquivos")
+async def entregar_arquivos(job_id: str = Form(...), html_nome: str = Form(...), zip_nome: str = Form(...)):
+    return {
+        "html_url": f"/baixar/{job_id}/{html_nome}",
+        "imagens_zip_url": f"/baixar/{job_id}/{zip_nome}"
     }
 
 @app.get("/baixar/{job_id}/{filename}")
