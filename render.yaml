@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: gerador-html
+    name: api-completa-html
     env: python
     plan: free
     buildCommand: "pip install -r requirements.txt"
