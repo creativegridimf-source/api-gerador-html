@@ -1,131 +1,97 @@
 from fastapi import FastAPI, UploadFile, Form
 from fastapi.responses import FileResponse
-from fastapi.middleware.cors import CORSMiddleware
-import shutil, os, zipfile, uuid
-from typing import Optional
+import os, uuid, shutil, zipfile
+from datetime import datetime
 
-app = FastAPI(title="API Completa - Gerador de HTML de Campanha")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = FastAPI(title="API HTML Inteligente - Nomeada")
 
 BASE_DIR = "data"
 os.makedirs(BASE_DIR, exist_ok=True)
 
-TEMPLATE_HTML = """<html><head><title>{subject}</title></head><body>
-<!-- SNIPPET --><font face="sans-serif">{snippet}</font></a></td>
-<!-- CONTEÚDO -->
-{conteudo}
-<!-- /CONTEÚDO -->
-</body></html>"""
+HTML_TEMPLATE = """
+<html>
+  <head>
+    <title>{subject}</title>
+  </head>
+  <body>
+    <!-- SNIPPET -->
+    <font face="sans-serif">{snippet}</font></a></td>
+
+    <!-- CONTEÚDO -->
+    {conteudo}
+    <!-- /CONTEÚDO -->
+  </body>
+</html>
+"""
+
+def salvar_arquivo_temporario(upload: UploadFile, pasta: str) -> str:
+    os.makedirs(pasta, exist_ok=True)
+    caminho = os.path.join(pasta, upload.filename)
+    with open(caminho, "wb") as buffer:
+        shutil.copyfileobj(upload.file, buffer)
+    return caminho
+
+def simular_fatiamento_com_nomeacao(imagem_path: str, destino: str, nome_evento: str) -> list:
+    os.makedirs(destino, exist_ok=True)
+    data_prefixo = datetime.now().strftime("%Y%m%d")
+    extensao = os.path.splitext(imagem_path)[1].lower()
+
+    blocos = []
+    for i in range(1, 4):  # Simulando 3 blocos
+        nome_imagem = f"{data_prefixo}_{nome_evento}-{i}{extensao}"
+        caminho_destino = os.path.join(destino, nome_imagem)
+        shutil.copy(imagem_path, caminho_destino)
+        blocos.append({
+            "arquivo": nome_imagem,
+            "alt": f"Bloco {i} da campanha {nome_evento.replace('-', ' ')}"
+        })
+    return blocos
+
+def gerar_html_conteudo(blocos: list) -> str:
+    html = ""
+    for bloco in blocos:
+        html += f"<table><tr><td><img src='imagens/{bloco['arquivo']}' alt='{bloco['alt']}' /></td></tr></table>\n"
+    html += "<table><tr><td style='font-family: Inter; font-size:16px;'>Texto convertido de imagem com fundo sólido.</td></tr></table>"
+    html += "<table><tr><td><a href='#' style='display:inline-block;padding:12px 24px;background:#000;color:#fff;text-decoration:none;border-radius:4px;font-family: Inter;'>Ver mais</a></td></tr></table>"
+    return html
 
 @app.post("/gerar-html")
 async def gerar_html(
     template: str = Form(...),
     subject: str = Form(...),
     snippet: str = Form(...),
+    nome_evento_curto: str = Form(...),
     imagem: UploadFile = Form(...)
 ):
     job_id = str(uuid.uuid4())[:8]
-    folder = os.path.join(BASE_DIR, f"job_{job_id}")
-    imagens_folder = os.path.join(folder, "imagens")
+    job_folder = os.path.join(BASE_DIR, f"job_{job_id}")
+    imagens_folder = os.path.join(job_folder, "imagens")
     os.makedirs(imagens_folder, exist_ok=True)
 
-    image_path = os.path.join(imagens_folder, imagem.filename)
-    with open(image_path, "wb") as buffer:
-        shutil.copyfileobj(imagem.file, buffer)
+    imagem_path = salvar_arquivo_temporario(imagem, imagens_folder)
+    blocos = simular_fatiamento_com_nomeacao(imagem_path, imagens_folder, nome_evento_curto)
+    conteudo = gerar_html_conteudo(blocos)
 
-    conteudo_html = f"<table><tr><td><img src='imagens/{imagem.filename}' alt='Imagem da campanha' /></td></tr><tr><td style='font-family: Inter;'>Conteúdo gerado com base na imagem do template {template}.</td></tr></table>"
-    html_final = TEMPLATE_HTML.format(subject=subject, snippet=snippet, conteudo=conteudo_html)
-
-    html_filename = f"{template.lower().replace(' ', '-')}-{job_id}.html"
-    html_path = os.path.join(folder, html_filename)
+    html_filename = f"{nome_evento_curto}-{datetime.now().strftime('%Y%m%d')}.html"
+    html_path = os.path.join(job_folder, html_filename)
     with open(html_path, "w", encoding="utf-8") as f:
-        f.write(html_final)
+        f.write(HTML_TEMPLATE.format(subject=subject, snippet=snippet, conteudo=conteudo))
 
-    zip_filename = f"{template.lower().replace(' ', '-')}-{job_id}-imagens.zip"
-    zip_path = os.path.join(folder, zip_filename)
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-        zipf.write(image_path, arcname=f"imagens/{imagem.filename}")
-
-    return {
-        "html_url": f"/baixar/{job_id}/{html_filename}",
-        "imagens_zip_url": f"/baixar/{job_id}/{zip_filename}"
-    }
-
-@app.post("/fatiar-imagem")
-async def fatiar_imagem(imagem: UploadFile = Form(...)):
-    job_id = str(uuid.uuid4())[:8]
-    folder = os.path.join(BASE_DIR, f"job_{job_id}")
-    imagens_folder = os.path.join(folder, "imagens")
-    os.makedirs(imagens_folder, exist_ok=True)
-
-    image_path = os.path.join(imagens_folder, imagem.filename)
-    with open(image_path, "wb") as buffer:
-        shutil.copyfileobj(imagem.file, buffer)
-
-    zip_filename = f"fatiado-{job_id}.zip"
-    zip_path = os.path.join(folder, zip_filename)
+    zip_path = os.path.join(job_folder, f"{nome_evento_curto}-imagens.zip")
     with zipfile.ZipFile(zip_path, "w") as zipf:
-        zipf.write(image_path, arcname=imagem.filename)
+        for bloco in blocos:
+            zipf.write(os.path.join(imagens_folder, bloco["arquivo"]), arcname=f"imagens/{bloco['arquivo']}")
 
     return {
-        "imagens_zip_url": f"/baixar/{job_id}/{zip_filename}",
-        "blocos": [
-            {
-                "arquivo": imagem.filename,
-                "alt_sugerido": "Imagem de campanha fatiada (exemplo)"
-            }
-        ]
-    }
-
-@app.post("/converter-texto-html")
-async def converter_texto_em_html(imagem: UploadFile = Form(...)):
-    return {
-        "html_gerado": "<div style='font-family: Inter; font-size:16px;'>Texto extraído da imagem com fundo sólido (simulado)</div>"
-    }
-
-@app.post("/substituir-meta-tags")
-async def substituir_subject_e_snippet(
-    html: str = Form(...),
-    subject: str = Form(...),
-    snippet: str = Form(...)
-):
-    html = html.replace("<title>", f"<title>{subject}")
-    if "<!-- SNIPPET -->" in html:
-        before, after = html.split("<!-- SNIPPET -->", 1)
-        snippet_start = after.find("<font")
-        snippet_end = after.find("</font>")
-        if snippet_start != -1 and snippet_end != -1:
-            snippet_html = after[snippet_start:snippet_end+7]
-            after = after.replace(snippet_html, f"<font face='sans-serif'>{snippet}</font>", 1)
-        html = before + "<!-- SNIPPET -->" + after
-    return {"html_atualizado": html}
-
-@app.post("/gerar-alt")
-async def gerar_alt_automatico(imagem: UploadFile = Form(...)):
-    return {
-        "alt_sugerido": f"Texto descritivo automático para {imagem.filename}"
-    }
-
-@app.post("/entregar-arquivos")
-async def entregar_arquivos(job_id: str = Form(...), html_nome: str = Form(...), zip_nome: str = Form(...)):
-    return {
-        "html_url": f"/baixar/{job_id}/{html_nome}",
-        "imagens_zip_url": f"/baixar/{job_id}/{zip_nome}"
+        "html_url": f"/baixar/{job_id}/{os.path.basename(html_path)}",
+        "imagens_zip_url": f"/baixar/{job_id}/{os.path.basename(zip_path)}"
     }
 
 @app.get("/baixar/{job_id}/{filename}")
-def baixar_arquivo(job_id: str, filename: str):
-    file_path = os.path.join(BASE_DIR, f"job_{job_id}", filename)
-    return FileResponse(file_path, filename=filename)
-
+def baixar(job_id: str, filename: str):
+    caminho = os.path.join(BASE_DIR, f"job_{job_id}", filename)
+    return FileResponse(caminho, filename=filename)
 
 @app.get("/")
-def root():
-    return {"status": "API de geração de HTML está ativa!"}
+def status():
+    return {"status": "API inteligente com nomeação no ar."}
