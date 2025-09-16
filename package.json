@@ -1,16 +1,15 @@
 {
-  "name": "email-builder",
+  "name": "api-gerador-html-1",
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
+    "archiver": "^5.3.1",
     "express": "^4.18.2",
-    "multer": "^1.4.5",
+    "multer": "^1.4.5-lts.2",
     "sharp": "^0.32.0",
-    "tesseract.js": "^4.0.3",
-    "archiver": "^5.3.1"
+    "tesseract.js": "^4.0.3"
   }
 }
-
