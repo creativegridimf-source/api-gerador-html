@@ -22,9 +22,9 @@ app.post("/build-email", upload.single("image"), (req, res) => {
   const templateMap = {
     "Cidade-Center-Norte": "Cidade-Center-Norte.html",
     "Incorporadora": "Incorporadora.html",
-    "Shopping Center Norte": "Shopping Center Norte.html",
-    "Expo Center Norte": "Expo Center Norte.html",
-    "Lar Center": "Lar Center.html"
+    "Shopping Center Norte": "Shopping-Center-Norte.html",
+    "Expo Center Norte": "Expo-Center-Norte.html",
+    "Lar Center": "Lar-Center.html"
   };
 
   const templateFile = templateMap[template_id];
